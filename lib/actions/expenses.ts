@@ -12,6 +12,9 @@ interface CreateExpenseInput {
   transaction_date: string
   split_mode: 'equal' | 'custom'
   splits: { user_id: string; amount_owed: string }[]
+  is_personal?: boolean
+  next_due_date?: string | null
+  billing_cycle?: 'monthly' | 'yearly' | 'one-time'
 }
 
 export async function createExpense(input: CreateExpenseInput) {
@@ -45,6 +48,9 @@ export async function createExpense(input: CreateExpenseInput) {
         category: input.category,
         total_amount: parseFloat(input.total_amount),
         transaction_date: input.transaction_date,
+        is_personal: input.is_personal || false,
+        next_due_date: input.next_due_date || null,
+        billing_cycle: input.billing_cycle || 'monthly',
       })
       .select()
       .single()
@@ -136,6 +142,9 @@ export async function updateExpense(
         category: input.category,
         total_amount: parseFloat(input.total_amount),
         transaction_date: input.transaction_date,
+        is_personal: input.is_personal || false,
+        next_due_date: input.next_due_date || null,
+        billing_cycle: input.billing_cycle || 'monthly',
       })
       .eq('id', expenseId)
 
@@ -156,6 +165,9 @@ export async function updateExpense(
         category: originalExpense.category,
         total_amount: originalExpense.total_amount,
         transaction_date: originalExpense.transaction_date,
+        is_personal: originalExpense.is_personal,
+        next_due_date: originalExpense.next_due_date,
+        billing_cycle: originalExpense.billing_cycle,
       }).eq('id', expenseId)
 
       return { success: false, error: `Failed to update splits: ${deleteSplitsError.message}` }
@@ -190,6 +202,9 @@ export async function updateExpense(
         category: originalExpense.category,
         total_amount: originalExpense.total_amount,
         transaction_date: originalExpense.transaction_date,
+        is_personal: originalExpense.is_personal,
+        next_due_date: originalExpense.next_due_date,
+        billing_cycle: originalExpense.billing_cycle,
       }).eq('id', expenseId)
 
       return { success: false, error: `Failed to write new liability splits: ${insertSplitsError.message}` }

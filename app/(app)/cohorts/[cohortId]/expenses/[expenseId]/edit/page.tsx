@@ -86,6 +86,9 @@ export default async function EditExpensePage({
       user_id: s.user_id,
       amount_owed: Number(s.amount_owed),
     })),
+    is_personal: expense.is_personal,
+    next_due_date: expense.next_due_date,
+    billing_cycle: expense.billing_cycle,
   }
 
   return (

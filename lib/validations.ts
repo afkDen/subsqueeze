@@ -19,6 +19,12 @@ export const createCohortSchema = z.object({
   description: z.string().max(200).optional().or(z.literal('')),
 })
 
+export const updateCohortSchema = z.object({
+  name: z.string().min(3, { message: 'Name must be at least 3 characters' }).max(50),
+  description: z.string().max(200).optional().or(z.literal('')),
+  budget_limit: z.string().regex(/^\d+(\.\d{1,2})?$/, { message: 'Budget limit must be a valid number' }).optional().nullable().or(z.literal('')),
+})
+
 export const joinCohortSchema = z.object({
   invite_code: z.string().min(8, { message: 'Invite code must be at least 8 characters' }).max(12),
 })
@@ -35,8 +41,10 @@ export const expenseSchema = z.object({
     .refine((val) => parseFloat(val) > 0, { message: 'Amount must be greater than 0' }),
   transaction_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'Date must be in YYYY-MM-DD format' }),
   split_mode: z.enum(['equal', 'custom']),
-  // A mapping of user_id -> amount_owed string
   splits: z.array(expenseSplitSchema),
+  is_personal: z.boolean().optional(),
+  next_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'Date must be in YYYY-MM-DD format' }).optional().nullable().or(z.literal('')),
+  billing_cycle: z.enum(['monthly', 'yearly', 'one-time']).optional(),
 })
 
 export const settlementSchema = z.object({

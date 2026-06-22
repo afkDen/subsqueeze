@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { createCohortSchema, joinCohortSchema } from '@/lib/validations'
+import { createCohortSchema, joinCohortSchema, updateCohortSchema } from '@/lib/validations'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 
@@ -177,6 +177,58 @@ export async function deleteCohort(cohortId: string) {
         success: false,
         error: 'Cohort deletion failed. Verify that you are the administrator and that you have enabled the RLS delete policy for cohorts.',
       }
+    }
+
+    revalidatePath('/dashboard')
+    revalidatePath(`/cohorts/${cohortId}`)
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'An unexpected error occurred.' }
+  }
+}
+
+export async function updateCohort(cohortId: string, prevState: any, formData: FormData) {
+  const supabase = await createClient()
+
+  // Authenticate user
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return { success: false, error: 'Unauthorized. Please log in.' }
+  }
+
+  // Validate form data
+  const rawName = formData.get('name')
+  const rawDescription = formData.get('description')
+  const rawBudgetLimit = formData.get('budget_limit')
+  
+  const validated = updateCohortSchema.safeParse({
+    name: rawName,
+    description: rawDescription,
+    budget_limit: rawBudgetLimit,
+  })
+
+  if (!validated.success) {
+    return {
+      success: false,
+      error: validated.error.issues.map(e => e.message).join(', '),
+    }
+  }
+
+  const { name, description, budget_limit } = validated.data
+
+  try {
+    // Perform update (RLS will check if the user is an admin of this cohort)
+    const { error } = await supabase
+      .from('cohorts')
+      .update({
+        name,
+        description: description || null,
+        budget_limit: budget_limit ? parseFloat(budget_limit) : null,
+      })
+      .eq('id', cohortId)
+
+    if (error) {
+      return { success: false, error: error.message }
     }
 
     revalidatePath('/dashboard')

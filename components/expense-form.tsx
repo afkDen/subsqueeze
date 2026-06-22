@@ -25,6 +25,9 @@ interface InitialExpense {
   total_amount: number
   transaction_date: string
   splits: { user_id: string; amount_owed: number }[]
+  is_personal?: boolean
+  next_due_date?: string | null
+  billing_cycle?: 'monthly' | 'yearly' | 'one-time'
 }
 
 interface ExpenseFormProps {
@@ -46,6 +49,13 @@ export function ExpenseForm({ cohortId, cohortMembers, currentUserId, initialExp
     initialExpense?.transaction_date || new Date().toISOString().split('T')[0]
   )
   const [splitMode, setSplitMode] = useState<'equal' | 'custom'>('equal')
+  
+  // New mockup fields
+  const [isPersonal, setIsPersonal] = useState(initialExpense?.is_personal || false)
+  const [nextDueDate, setNextDueDate] = useState(initialExpense?.next_due_date || '')
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'one-time'>(
+    initialExpense?.billing_cycle || 'monthly'
+  )
 
   // Selected members in the split (defaults to all)
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>(
@@ -80,7 +90,19 @@ export function ExpenseForm({ cohortId, cohortMembers, currentUserId, initialExp
     }
   }, [initialExpense])
 
-  // Recalculate splits whenever totalAmount, selected members, splitMode, or customAmounts change
+  // Manage splits checklist based on isPersonal status
+  useEffect(() => {
+    if (isPersonal) {
+      setSelectedMemberIds([currentUserId])
+      setSplitMode('equal')
+    } else if (initialExpense && !initialExpense.is_personal) {
+      setSelectedMemberIds(initialExpense.splits.map(s => s.user_id))
+    } else {
+      setSelectedMemberIds(cohortMembers.map(m => m.userId))
+    }
+  }, [isPersonal, currentUserId, cohortMembers, initialExpense])
+
+  // Recalculate splits whenever totalAmount, selected members, splitMode, customAmounts, or isPersonal change
   useEffect(() => {
     const amount = parseFloat(totalAmount)
     if (isNaN(amount) || amount <= 0 || selectedMemberIds.length === 0) {
@@ -91,7 +113,9 @@ export function ExpenseForm({ cohortId, cohortMembers, currentUserId, initialExp
     const totalCents = Math.round(amount * 100)
     const newSplits: Record<string, string> = {}
 
-    if (splitMode === 'equal') {
+    if (isPersonal) {
+      newSplits[currentUserId] = amount.toFixed(2)
+    } else if (splitMode === 'equal') {
       const N = selectedMemberIds.length
       const baseShareCents = Math.floor(totalCents / N)
       const remainderCents = totalCents % N
@@ -122,7 +146,7 @@ export function ExpenseForm({ cohortId, cohortMembers, currentUserId, initialExp
     }
 
     setCalculatedSplits(newSplits)
-  }, [totalAmount, selectedMemberIds, splitMode, customAmounts, currentUserId])
+  }, [totalAmount, selectedMemberIds, splitMode, customAmounts, currentUserId, isPersonal])
 
   // Calculate sum and validation details
   const currentAmount = parseFloat(totalAmount) || 0
@@ -190,24 +214,24 @@ export function ExpenseForm({ cohortId, cohortMembers, currentUserId, initialExp
 
     startTransition(async () => {
       let res
+      const expenseInput = {
+        description,
+        category,
+        total_amount: totalAmount,
+        transaction_date: transactionDate,
+        split_mode: splitMode,
+        splits: finalSplits,
+        is_personal: isPersonal,
+        next_due_date: category === 'subscription' && nextDueDate ? nextDueDate : null,
+        billing_cycle: category === 'subscription' ? billingCycle : 'monthly',
+      }
+
       if (isEdit && initialExpense) {
-        res = await updateExpense(initialExpense.id, {
-          description,
-          category,
-          total_amount: totalAmount,
-          transaction_date: transactionDate,
-          split_mode: splitMode,
-          splits: finalSplits,
-        })
+        res = await updateExpense(initialExpense.id, expenseInput)
       } else {
         res = await createExpense({
           cohortId,
-          description,
-          category,
-          total_amount: totalAmount,
-          transaction_date: transactionDate,
-          split_mode: splitMode,
-          splits: finalSplits,
+          ...expenseInput,
         })
       }
 
@@ -239,6 +263,21 @@ export function ExpenseForm({ cohortId, cohortMembers, currentUserId, initialExp
               <AlertDescription className="text-sm font-sans">{errorMsg}</AlertDescription>
             </Alert>
           )}
+
+          {/* Expense Type (Shared vs Personal) */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-foreground">Expense Type</Label>
+            <Tabs
+              value={isPersonal ? 'personal' : 'shared'}
+              onValueChange={(val) => setIsPersonal(val === 'personal')}
+              className="w-full"
+            >
+              <TabsList className="bg-muted border border-border w-full grid grid-cols-2 h-9 rounded-md p-1">
+                <TabsTrigger value="shared" className="rounded-sm text-xs font-medium">Shared Expense (Split with Group)</TabsTrigger>
+                <TabsTrigger value="personal" className="rounded-sm text-xs font-medium">Personal Expense (Pay alone)</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
 
           {/* Core Info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -301,113 +340,154 @@ export function ExpenseForm({ cohortId, cohortMembers, currentUserId, initialExp
             </div>
           </div>
 
-          {/* Members Split Checklist */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium text-foreground block">Include in Split</Label>
-            <div className="border border-border rounded-md bg-muted/10 p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {cohortMembers.map(member => {
-                const isChecked = selectedMemberIds.includes(member.userId)
-                return (
-                  <label key={member.userId} className="flex items-center gap-2 text-sm font-sans p-1.5 hover:bg-muted/30 rounded-sm cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => handleToggleMember(member.userId)}
-                      className="h-4 w-4 border-input rounded text-primary focus:ring-primary"
-                    />
-                    <span className="text-foreground">{member.username} {member.userId === currentUserId && '(You)'}</span>
-                  </label>
-                )
-              })}
-            </div>
-          </div>
+          {/* Mockup Subscription Fields (Next Due & Billing Cycle) */}
+          {category === 'subscription' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-border pt-4">
+              <div className="space-y-2">
+                <Label htmlFor="nextDueDate" className="text-sm font-medium text-foreground">Next Due Date (Optional)</Label>
+                <Input
+                  id="nextDueDate"
+                  type="date"
+                  value={nextDueDate}
+                  onChange={(e) => setNextDueDate(e.target.value)}
+                  className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
 
-          {/* Split Mode Toggles */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium text-foreground">Split Mode</Label>
-              <Tabs
-                value={splitMode}
-                onValueChange={(val: any) => setSplitMode(val)}
-                className="w-auto"
-              >
-                <TabsList className="bg-muted border border-border h-8 rounded-md p-0.5">
-                  <TabsTrigger value="equal" className="rounded-sm px-3 py-0.5 text-xs font-medium">Equal Split</TabsTrigger>
-                  <TabsTrigger value="custom" className="rounded-sm px-3 py-0.5 text-xs font-medium">Custom Split</TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <div className="space-y-2">
+                <Label htmlFor="billingCycle" className="text-sm font-medium text-foreground">Billing Cycle</Label>
+                <Select
+                  value={billingCycle}
+                  onValueChange={(val: any) => setBillingCycle(val)}
+                >
+                  <SelectTrigger id="billingCycle" className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+                    <SelectValue placeholder="Select billing cycle" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border border-border">
+                    <SelectItem value="monthly" className="text-sm">Monthly</SelectItem>
+                    <SelectItem value="yearly" className="text-sm">Yearly</SelectItem>
+                    <SelectItem value="one-time" className="text-sm">One-Time</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+          )}
 
-            {/* Split Breakdown */}
-            <div className="border border-border rounded-md bg-card overflow-hidden">
-              <table className="w-full text-left text-sm border-collapse">
-                <thead>
-                  <tr className="bg-muted/30 border-b border-border">
-                    <th className="p-3 font-heading font-medium text-foreground">Member</th>
-                    <th className="p-3 text-right font-heading font-medium text-foreground">Share (₱)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
+          {/* Members Split Checklist (only visible if Shared) */}
+          {!isPersonal ? (
+            <>
+              <div className="space-y-3 border-t border-border pt-4">
+                <Label className="text-sm font-medium text-foreground block">Include in Split</Label>
+                <div className="border border-border rounded-md bg-muted/10 p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {cohortMembers.map(member => {
-                    const isInSplit = selectedMemberIds.includes(member.userId)
-                    
-                    if (!isInSplit) {
-                      return (
-                        <tr key={member.userId} className="text-muted-foreground bg-muted/5">
-                          <td className="p-3 font-sans">{member.username}</td>
-                          <td className="p-3 text-right font-sans italic text-xs">Excluded</td>
-                        </tr>
-                      )
-                    }
-
+                    const isChecked = selectedMemberIds.includes(member.userId)
                     return (
-                      <tr key={member.userId} className="bg-background">
-                        <td className="p-3 font-sans font-medium text-foreground">
-                          {member.username} {member.userId === currentUserId && '(You)'}
-                        </td>
-                        <td className="p-3 text-right font-sans">
-                          {splitMode === 'equal' ? (
-                            <span className="font-medium text-foreground tabular-nums">
-                              ₱{calculatedSplits[member.userId] || '0.00'}
-                            </span>
-                          ) : (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <span className="text-muted-foreground text-xs">₱</span>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={customAmounts[member.userId] || ''}
-                                onChange={(e) => handleCustomAmountChange(member.userId, e.target.value)}
-                                placeholder="0.00"
-                                className="w-24 text-right bg-background border border-input rounded-sm px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary tabular-nums"
-                              />
-                            </div>
-                          )}
-                        </td>
-                      </tr>
+                      <label key={member.userId} className="flex items-center gap-2 text-sm font-sans p-1.5 hover:bg-muted/30 rounded-sm cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleMember(member.userId)}
+                          className="h-4 w-4 border-input rounded text-primary focus:ring-primary"
+                        />
+                        <span className="text-foreground">{member.username} {member.userId === currentUserId && '(You)'}</span>
+                      </label>
                     )
                   })}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              </div>
 
-            {/* Sum Checking / Balance alert for custom mode */}
-            {splitMode === 'custom' && (
-              <div className="flex items-center justify-between text-xs font-sans px-1">
-                <span className="text-muted-foreground">
-                  Sum of splits: <span className="font-semibold text-foreground">₱{(sumOfSplitsCents / 100).toFixed(2)}</span> / ₱{currentAmount.toFixed(2)}
-                </span>
-                {isSumMatching ? (
-                  <span className="text-owed font-semibold">Matched exactly</span>
-                ) : (
-                  <span className="text-owe font-semibold">
-                    {difference > 0 ? `Needs ₱${difference.toFixed(2)} more` : `Exceeds by ₱${Math.abs(difference).toFixed(2)}`}
-                  </span>
+              {/* Split Mode Toggles */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium text-foreground">Split Mode</Label>
+                  <Tabs
+                    value={splitMode}
+                    onValueChange={(val: any) => setSplitMode(val)}
+                    className="w-auto"
+                  >
+                    <TabsList className="bg-muted border border-border h-8 rounded-md p-0.5">
+                      <TabsTrigger value="equal" className="rounded-sm px-3 py-0.5 text-xs font-medium">Equal Split</TabsTrigger>
+                      <TabsTrigger value="custom" className="rounded-sm px-3 py-0.5 text-xs font-medium">Custom Split</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+
+                {/* Split Breakdown */}
+                <div className="border border-border rounded-md bg-card overflow-hidden">
+                  <table className="w-full text-left text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-muted/30 border-b border-border">
+                        <th className="p-3 font-heading font-medium text-foreground">Member</th>
+                        <th className="p-3 text-right font-heading font-medium text-foreground">Share (₱)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {cohortMembers.map(member => {
+                        const isInSplit = selectedMemberIds.includes(member.userId)
+                        
+                        if (!isInSplit) {
+                          return (
+                            <tr key={member.userId} className="text-muted-foreground bg-muted/5">
+                              <td className="p-3 font-sans">{member.username}</td>
+                              <td className="p-3 text-right font-sans italic text-xs">Excluded</td>
+                            </tr>
+                          )
+                        }
+
+                        return (
+                          <tr key={member.userId} className="bg-background">
+                            <td className="p-3 font-sans font-medium text-foreground">
+                              {member.username} {member.userId === currentUserId && '(You)'}
+                            </td>
+                            <td className="p-3 text-right font-sans">
+                              {splitMode === 'equal' ? (
+                                <span className="font-medium text-foreground tabular-nums">
+                                  ₱{calculatedSplits[member.userId] || '0.00'}
+                                </span>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <span className="text-muted-foreground text-xs">₱</span>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={customAmounts[member.userId] || ''}
+                                    onChange={(e) => handleCustomAmountChange(member.userId, e.target.value)}
+                                    placeholder="0.00"
+                                    className="w-24 text-right bg-background border border-input rounded-sm px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary tabular-nums"
+                                  />
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Sum Checking / Balance alert for custom mode */}
+                {splitMode === 'custom' && (
+                  <div className="flex items-center justify-between text-xs font-sans px-1">
+                    <span className="text-muted-foreground">
+                      Sum of splits: <span className="font-semibold text-foreground">₱{(sumOfSplitsCents / 100).toFixed(2)}</span> / ₱{currentAmount.toFixed(2)}
+                    </span>
+                    {isSumMatching ? (
+                      <span className="text-owed font-semibold">Matched exactly</span>
+                    ) : (
+                      <span className="text-owe font-semibold">
+                        {difference > 0 ? `Needs ₱${difference.toFixed(2)} more` : `Exceeds by ₱${Math.abs(difference).toFixed(2)}`}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <div className="border border-border rounded-md bg-muted/15 p-4 text-sm text-muted-foreground font-sans">
+              This is marked as a <strong>Personal Expense</strong>. 100% of the cost (₱{currentAmount.toFixed(2)}) will be billed directly to you and will not be shared with other members of the cohort.
+            </div>
+          )}
 
           {/* Form Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
@@ -422,7 +502,7 @@ export function ExpenseForm({ cohortId, cohortMembers, currentUserId, initialExp
             </Button>
             <Button
               type="submit"
-              disabled={isPending || (splitMode === 'custom' && !isSumMatching)}
+              disabled={isPending || (!isPersonal && splitMode === 'custom' && !isSumMatching)}
               className="bg-primary text-primary-foreground hover:opacity-90 font-medium py-2 px-4 rounded-md flex items-center gap-1.5"
             >
               <Save className="h-4 w-4" />

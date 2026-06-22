@@ -30,6 +30,7 @@ create table public.cohorts (
   description     text,
   invite_code     text not null unique default substr(replace(uuid_generate_v4()::text, '-', ''), 1, 8),
   created_by      uuid not null references public.users(id),
+  budget_limit    numeric(12,2) check (budget_limit > 0) default null,
   created_at      timestamptz not null default now()
 );
 
@@ -51,6 +52,9 @@ create table public.expenses (
   category           text not null default 'general' check (category in ('subscription', 'general')),
   total_amount       numeric(12,2) not null check (total_amount > 0),
   transaction_date   date not null default current_date,
+  is_personal        boolean not null default false,
+  next_due_date      date default null,
+  billing_cycle      text check (billing_cycle in ('monthly', 'yearly', 'one-time')) default 'monthly',
   created_at         timestamptz not null default now()
 );
 

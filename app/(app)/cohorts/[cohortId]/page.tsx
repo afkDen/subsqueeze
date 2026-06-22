@@ -9,16 +9,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Users, ArrowLeft, LogOut, Copy, Info } from 'lucide-react'
+import { Plus, Users, ArrowLeft, LogOut, Copy, Info, Calendar } from 'lucide-react'
+import { format, parseISO } from 'date-fns'
 
-export const revalidate = 0 // Disable cache for real-time balances
-
-// A simple client wrapper is not needed since we can do copy action with CSS or native browser or write a small client component.
-// Let's write the whole page as a server component, and we can make the copy button a small client component, or just a simple button.
-// Let's create a Client Component for copy button and leave cohort button.
+// Client Components
 import { CopyButton } from '@/components/copy-button'
 import { LeaveCohortButton } from '@/components/leave-cohort-button'
 import { DeleteCohortButton } from '@/components/delete-cohort-button'
+import { EditCohortDialog } from '@/components/edit-cohort-dialog'
+
+export const revalidate = 0 // Disable cache for real-time balances
 
 export default async function CohortPage({
   params,
@@ -34,7 +34,7 @@ export default async function CohortPage({
     redirect('/login')
   }
 
-  // Fetch cohort details
+  // Fetch cohort details (includes budget_limit)
   const { data: cohort, error: cohortError } = await supabase
     .from('cohorts')
     .select('*')
@@ -115,10 +115,10 @@ export default async function CohortPage({
     }
   })
 
-  // Fetch raw expenses for activity feed
+  // Fetch raw expenses for activity feed (including is_personal, next_due_date, billing_cycle, splits)
   const { data: rawExpenses } = await supabase
     .from('expenses')
-    .select('*, users!payer_id(username)')
+    .select('*, users!payer_id(username), liability_fractions(*, users(username))')
     .eq('cohort_id', cohortId)
     .order('transaction_date', { ascending: false })
 
@@ -131,6 +131,14 @@ export default async function CohortPage({
     total_amount: Number(e.total_amount),
     transaction_date: e.transaction_date,
     created_at: e.created_at,
+    is_personal: e.is_personal,
+    next_due_date: e.next_due_date,
+    billing_cycle: e.billing_cycle,
+    splits: (e.liability_fractions as any[])?.map(lf => ({
+      user_id: lf.user_id,
+      username: lf.users?.username || 'Unknown',
+      amount_owed: Number(lf.amount_owed),
+    })) || [],
   })) || []
 
   // Fetch raw settlements for activity feed
@@ -161,7 +169,20 @@ export default async function CohortPage({
 
   const isOwed = userNetBalance > 0
   const isOwe = userNetBalance < 0
-  const isSettled = Math.abs(userNetBalance) < 0.005
+
+  // Calculate cohort spend for the current month
+  const today = new Date()
+  const firstDayOfMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+  const cohortMonthlySpend = expenses
+    .filter(e => e.transaction_date >= firstDayOfMonthStr)
+    .reduce((sum, e) => sum + e.total_amount, 0)
+
+  // Get upcoming renewals in this cohort (where next_due_date is in the future)
+  const todayStr = today.toISOString().split('T')[0]
+  const upcomingSubscriptions = expenses
+    .filter(e => e.category === 'subscription' && e.next_due_date && e.next_due_date >= todayStr)
+    .sort((a, b) => (a.next_due_date! < b.next_due_date! ? -1 : 1))
+    .slice(0, 3) // Show top 3 upcoming
 
   return (
     <div className="space-y-8">
@@ -195,6 +216,14 @@ export default async function CohortPage({
               Add Expense
             </Link>
             {userRole === 'admin' && (
+              <EditCohortDialog 
+                cohortId={cohortId}
+                initialName={cohort.name}
+                initialDescription={cohort.description}
+                initialBudgetLimit={cohort.budget_limit}
+              />
+            )}
+            {userRole === 'admin' && (
               <DeleteCohortButton cohortId={cohortId} cohortName={cohort.name} />
             )}
             <LeaveCohortButton cohortId={cohortId} isCreator={cohort.created_by === user.id} />
@@ -224,6 +253,45 @@ export default async function CohortPage({
           </div>
         </CardContent>
       </Card>
+
+      {/* Budget Limit Progress Bar */}
+      {cohort.budget_limit && (
+        <Card className="border border-border bg-card">
+          <CardContent className="pt-6">
+            <div className="flex justify-between items-end mb-3">
+              <div>
+                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase font-sans">
+                  Household Budget
+                </p>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-2xl font-heading font-extrabold tracking-tight text-foreground tabular-nums">
+                    {formatCurrency(cohortMonthlySpend)}
+                  </span>
+                  <span className="text-sm text-muted-foreground font-sans">
+                    / {formatCurrency(cohort.budget_limit)} limit
+                  </span>
+                </div>
+              </div>
+              <span className="text-sm font-bold text-foreground tabular-nums">
+                {Math.round((cohortMonthlySpend / cohort.budget_limit) * 100)}%
+              </span>
+            </div>
+            <div className="w-full bg-muted h-3 rounded-full overflow-hidden border border-border">
+              <div 
+                className="bg-primary h-full rounded-full transition-all duration-500" 
+                style={{ width: `${Math.min(100, Math.round((cohortMonthlySpend / cohort.budget_limit) * 100))}%` }}
+              ></div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2.5 font-sans">
+              {cohortMonthlySpend <= cohort.budget_limit ? (
+                <span>You have <span className="font-semibold text-foreground">{formatCurrency(cohort.budget_limit - cohortMonthlySpend)}</span> remaining this month.</span>
+              ) : (
+                <span className="text-owe font-semibold">Exceeded budget by {formatCurrency(cohortMonthlySpend - cohort.budget_limit)}.</span>
+              )}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cohort Balance Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -304,6 +372,41 @@ export default async function CohortPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Upcoming Renewals in Cohort */}
+      {upcomingSubscriptions.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-muted-foreground" />
+            <h2 className="text-lg font-heading font-semibold text-foreground">Upcoming Renewals</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {upcomingSubscriptions.map(sub => (
+              <Card key={sub.id} className="border border-border bg-card">
+                <CardContent className="p-4 flex justify-between items-center">
+                  <div>
+                    <h4 className="font-semibold text-sm text-foreground">{sub.description}</h4>
+                    <p className="text-xs text-muted-foreground font-sans mt-0.5">
+                      Due {format(parseISO(sub.next_due_date!), 'MMM d, yyyy')}
+                    </p>
+                    <span className="inline-block mt-2 px-1.5 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wider rounded-sm border border-border text-muted-foreground">
+                      {sub.is_personal ? 'Private' : 'Squeezed'}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-heading font-bold text-sm text-foreground tabular-nums block">
+                      {formatCurrency(sub.total_amount)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground capitalize block mt-0.5">
+                      {sub.billing_cycle}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Members List */}
