@@ -20,7 +20,13 @@ interface SettleUpDialogProps {
 export function SettleUpDialog({ cohortId, payeeId, payeeName, suggestedAmount }: SettleUpDialogProps) {
   const [open, setOpen] = useState(false)
   const [amount, setAmount] = useState(suggestedAmount.toFixed(2))
+  const [settlementDate, setSettlementDate] = useState('')
   
+  // Set default date client-side only (prevents hydration mismatch)
+  useEffect(() => {
+    setSettlementDate(new Date().toISOString().split('T')[0])
+  }, [])
+
   // Create state for action
   const [state, formAction, isPending] = useActionState(async (prevState: any, formData: FormData) => {
     const rawAmount = formData.get('amount') as string
@@ -112,7 +118,8 @@ export function SettleUpDialog({ cohortId, payeeId, payeeName, suggestedAmount }
               name="date"
               type="date"
               required
-              defaultValue={new Date().toISOString().split('T')[0]}
+              value={settlementDate}
+              onChange={(e) => setSettlementDate(e.target.value)}
               className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>

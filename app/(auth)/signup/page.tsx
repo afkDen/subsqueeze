@@ -68,7 +68,7 @@ export default function SignupPage() {
         </div>
 
         <div className="relative z-10 text-xs text-[#9da3ae] font-sans">
-          &copy; {new Date().getFullYear()} SubSqueeze. Household ledger tool.
+          &copy; 2026 SubSqueeze. Household ledger tool.
         </div>
       </div>
 

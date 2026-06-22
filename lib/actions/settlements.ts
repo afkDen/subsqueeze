@@ -79,6 +79,23 @@ export async function toggleLiabilitySettled(liabilityId: string, isSettled: boo
   }
 
   try {
+    // Check permission: user must be the debtor or the payer of the related expense
+    const { data: lf, error: fetchError } = await supabase
+      .from('liability_fractions')
+      .select('user_id, expense:expenses(payer_id)')
+      .eq('id', liabilityId)
+      .single()
+
+    if (fetchError || !lf) {
+      return { success: false, error: 'Liability record not found.' }
+    }
+
+    const expensePayerId = (lf.expense as any)?.payer_id
+
+    if (lf.user_id !== user.id && expensePayerId !== user.id) {
+      return { success: false, error: 'You do not have permission to modify this settlement status.' }
+    }
+
     const { error } = await supabase
       .from('liability_fractions')
       .update({ is_settled: isSettled })

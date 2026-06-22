@@ -26,6 +26,12 @@ export async function createExpense(input: CreateExpenseInput) {
     return { success: false, error: 'Unauthorized. Please log in.' }
   }
 
+  // Validate inputs schema
+  const parsed = expenseSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message }
+  }
+
   // Validate split sum
   const totalCents = Math.round(parseFloat(input.total_amount) * 100)
   const splitsSumCents = input.splits.reduce((sum, s) => sum + Math.round(parseFloat(s.amount_owed) * 100), 0)
@@ -95,6 +101,12 @@ export async function updateExpense(
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
     return { success: false, error: 'Unauthorized. Please log in.' }
+  }
+
+  // Validate inputs schema
+  const parsed = expenseSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message }
   }
 
   // Get original expense to verify creator identity and support rollbacks

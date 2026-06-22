@@ -46,7 +46,7 @@ export function ExpenseForm({ cohortId, cohortMembers, currentUserId, initialExp
   const [category, setCategory] = useState<'subscription' | 'general'>(initialExpense?.category || 'general')
   const [totalAmount, setTotalAmount] = useState(initialExpense?.total_amount ? initialExpense.total_amount.toFixed(2) : '')
   const [transactionDate, setTransactionDate] = useState(
-    initialExpense?.transaction_date || new Date().toISOString().split('T')[0]
+    initialExpense?.transaction_date || ''
   )
   const [splitMode, setSplitMode] = useState<'equal' | 'custom'>('equal')
   
@@ -89,6 +89,13 @@ export function ExpenseForm({ cohortId, cohortMembers, currentUserId, initialExp
       setSplitMode(allEqual ? 'equal' : 'custom')
     }
   }, [initialExpense])
+
+  // Set default transaction date on client only (avoids hydration mismatch)
+  useEffect(() => {
+    if (!initialExpense && !transactionDate) {
+      setTransactionDate(new Date().toISOString().split('T')[0])
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Manage splits checklist based on isPersonal status
   useEffect(() => {

@@ -136,6 +136,24 @@ export async function leaveCohort(cohortId: string) {
   }
 
   try {
+    // Prevent leaving if there are outstanding unsettled balances
+    const { data: balances, error: balanceError } = await supabase
+      .from('v_pairwise_balances')
+      .select('*')
+      .eq('cohort_id', cohortId)
+      .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
+
+    if (balanceError) {
+      return { success: false, error: `Verification failed: ${balanceError.message}` }
+    }
+
+    if (balances && balances.length > 0) {
+      return {
+        success: false,
+        error: 'You cannot leave a cohort with outstanding unsettled balances. Please settle all balances first.',
+      }
+    }
+
     const { error } = await supabase
       .from('user_cohorts')
       .delete()
@@ -162,6 +180,18 @@ export async function deleteCohort(cohortId: string) {
   }
 
   try {
+    // Verify admin role explicitly
+    const { data: membership, error: membershipError } = await supabase
+      .from('user_cohorts')
+      .select('role')
+      .eq('cohort_id', cohortId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (membershipError || !membership || membership.role !== 'admin') {
+      return { success: false, error: 'Only cohort administrators can delete the cohort.' }
+    }
+
     const { data, error } = await supabase
       .from('cohorts')
       .delete()
