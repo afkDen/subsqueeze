@@ -108,6 +108,7 @@ Changelog at the bottom. Keep this file in your repo root and commit it as you g
 *(newest first — add an entry every time you make a meaningful decision, hit a
 blocker, or finish a phase)*
 
+- **2026-06-22** — QA and Bug Review: fixed critical SSR/hydration mismatches in expense form date, settle-up date, and auth copyright year footer. Integrated robust server-side schema checking in createExpense/updateExpense, validation of user role privileges in deleteCohort, balance verification in leaveCohort, and permission checks in toggleLiabilitySettled. Verified production compilation and pushed changes to remote main branch for Vercel deployment.
 - **2026-06-22** — Completed and verified all MVP codebase functionalities including auth, cohort creation/joining/deletion, cents-safe rounding split logic, activity feed, and balance view integration. Passed TypeScript and build checks. Preparing for Vercel deployment.
 - **2026-06-22** — Project planning docs created (PID, Design Doc, Build Guide,
   SQL schema). Build not yet started.
