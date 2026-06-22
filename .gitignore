@@ -43,3 +43,27 @@ next-env.d.ts
 # academic files (school tasks)
 IM_System_Project_Report.*
 Technical_Documentation_Portfolio.*
+01_PID.md
+02_Design_Doc.md
+03_Progress.md
+04_Build_Guide.md
+academic_project_portfolio.md
+IM_Slides.html
+Liwanag_FinalProject_CS24.pdf
+Liwanag_FinalProject_CS24.sql
+conceptual_erd.png
+logical_erd.svg
+physical_erd.png
+sample_users_loaded.png
+supabase_schema_list.png
+supabase_tables_list.png
+supabase_cohorts_columns.png
+supabase_expenses_columns.png
+supabase_liabilities_columns.png
+supabase_settlements_columns.png
+test.html
+test.pdf
+webapp_*.png
+Liwanag_FinalProject_CS24.docx
+generate_portfolio.py
+settlement_chart.png

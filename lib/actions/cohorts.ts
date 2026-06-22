@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { createCohortSchema, joinCohortSchema, updateCohortSchema } from '@/lib/validations'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
@@ -92,11 +92,12 @@ export async function joinCohort(prevState: any, formData: FormData) {
   const { invite_code } = validated.data
 
   try {
-    // Find cohort by invite code
-    const { data: cohort, error: cohortFindError } = await supabase
+    // Find cohort by invite code using RLS-bypass admin client
+    const supabaseAdmin = createAdminClient()
+    const { data: cohort, error: cohortFindError } = await supabaseAdmin
       .from('cohorts')
       .select('id')
-      .eq('invite_code', invite_code)
+      .eq('invite_code', invite_code.trim().toLowerCase())
       .maybeSingle()
 
     if (cohortFindError || !cohort) {
