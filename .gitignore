@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 next-env.d.ts
 /stitch/
+
+# academic files (school tasks)
+IM_System_Project_Report.*
+Technical_Documentation_Portfolio.*
